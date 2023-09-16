@@ -28,19 +28,22 @@ class UserList:
     users: List[User] = dataclasses.field(default_factory=list)
 
     def getUser(self, identifier: str) -> Union[User, None]:
-        for user in self.users:
-            if (
-                user.Email == identifier
-                or user.UserKey == identifier
-                or user.DeviceId == identifier
-            ):
-                return user
-        return None
+        return next(
+            (
+                user
+                for user in self.users
+                if (
+                    user.Email == identifier
+                    or user.UserKey == identifier
+                    or user.DeviceId == identifier
+                )
+            ),
+            None,
+        )
 
     def removeUser(self, identifier: str) -> Union[User, None]:
         """returns the removed user"""
-        user = self.getUser(identifier)
-        if user:
+        if user := self.getUser(identifier):
             i = self.users.index(user)
             return self.users.pop(i)
         return None

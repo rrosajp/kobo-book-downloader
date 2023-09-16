@@ -27,18 +27,16 @@ def __GetBookAuthor(book: dict) -> str:
     # Unfortunately the role field is not filled out in the data returned by the 'library_sync' endpoint, so we only
     # use the first author and hope for the best. Otherwise we would get non-main authors too. For example Christopher
     # Buckley beside Joseph Heller for the -- terrible -- novel Catch-22.
-    if len(authors) == 0 and len(contributors) > 0:
+    if not authors and len(contributors) > 0:
         authors.append(contributors[0]['Name'])
 
     return ' & '.join(authors)
 
 
 def __SanitizeString(string: str) -> str:
-    result = ''
-    for c in string:
-        if c.isalnum() or ' ,;.!(){}[]#$\'-+@_'.find(c) >= 0:
-            result += c
-
+    result = ''.join(
+        c for c in string if c.isalnum() or c in ' ,;.!(){}[]#$\'-+@_'
+    )
     result = result.strip(' .')
     if platform.system() == 'Windows':
         # Limit the length -- mostly because of Windows. It would be better to do it on the full path using MAX_PATH.
@@ -140,8 +138,7 @@ def __GetBookList(kobo: Kobo, listAll: bool, exportFile: Union[TextIO, None]) ->
             ]
             rows.append(book)
 
-    rows = sorted(rows, key=lambda columns: columns[1].lower())
-    return rows
+    return sorted(rows, key=lambda columns: columns[1].lower())
 
 
 def ListBooks(users: List[User], listAll: bool, exportFile: Union[TextIO, None]) -> List[Book]:

@@ -35,8 +35,7 @@ def list(ctx):
 @click.argument('identifier', type=click.STRING)
 @click.pass_obj
 def list(ctx, identifier):
-    removed = Globals.Settings.UserList.removeUser(identifier)
-    if removed:
+    if removed := Globals.Settings.UserList.removeUser(identifier):
         Globals.Settings.Save()
         click.echo(f'Removed {removed.Email}')
     else:

@@ -71,7 +71,7 @@ def get(ctx, user, output_dir: Path, get_all: bool, format_str: str, product_id:
             err=True,
         )
         exit(1)
-    if not get_all and len(product_id) == 0:
+    if not get_all and not product_id:
         click.echo('error: must pass at least one Product ID, or use --get-all', err=True)
         exit(1)
 

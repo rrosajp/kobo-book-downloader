@@ -63,9 +63,8 @@ class Kobo:
     # This could be added to the session but then we would need to add { "Authorization": None } headers to all other
     # functions that doesn't need authorization.
     def __GetHeaderWithAccessToken(self) -> dict:
-        authorization = "Bearer " + self.user.AccessToken
-        headers = {"Authorization": authorization}
-        return headers
+        authorization = f"Bearer {self.user.AccessToken}"
+        return {"Authorization": authorization}
 
     def __RefreshAuthentication(self) -> None:
         headers = self.__GetHeaderWithAccessToken()
@@ -87,8 +86,7 @@ class Kobo:
 
         if jsonResponse["TokenType"] != "Bearer":
             raise KoboException(
-                "Authentication refresh returned with an unsupported token type: '%s'"
-                % jsonResponse["TokenType"]
+                f"""Authentication refresh returned with an unsupported token type: '{jsonResponse["TokenType"]}'"""
             )
 
         self.user.AccessToken = jsonResponse["AccessToken"]
@@ -173,7 +171,7 @@ class Kobo:
         headers = self.__GetHeaderWithAccessToken()
         hooks = self.__GetReauthenticationHook()
 
-        if len(syncToken) > 0:
+        if syncToken != "":
             headers["x-kobo-synctoken"] = syncToken
 
         debug_data("GetMyBookListPage")
@@ -197,8 +195,7 @@ class Kobo:
         debug_data("GetContentAccessBook")
         response = self.Session.get(url, params=params, headers=headers, hooks=hooks)
         response.raise_for_status()
-        jsonResponse = response.json()
-        return jsonResponse
+        return response.json()
 
     @staticmethod
     def __GetContentKeys(contentAccessBookResponse: dict) -> Dict[str, str]:
@@ -206,10 +203,10 @@ class Kobo:
         if jsonContentKeys is None:
             return {}
 
-        contentKeys = {}
-        for contentKey in jsonContentKeys:
-            contentKeys[contentKey["Name"]] = contentKey["Value"]
-        return contentKeys
+        return {
+            contentKey["Name"]: contentKey["Value"]
+            for contentKey in jsonContentKeys
+        }
 
     @staticmethod
     def __getContentUrls(bookMetadata: dict) -> str:
@@ -253,8 +250,7 @@ class Kobo:
 
             download_keys = ['DownloadUrl', 'Url']
             for key in download_keys:
-                download_url = jsonContentUrl.get(key, None)
-                if download_url:
+                if download_url := jsonContentUrl.get(key, None):
                     return download_url, hasDrm
 
         message = f"Download URL for supported formats can't be found for product '{productId}'.\n"
@@ -281,7 +277,7 @@ class Kobo:
         for item in data['Spine']:
             fileNum = int(item['Id']) + 1
             response = self.Session.get(item['Url'], stream=True)
-            filePath = os.path.join(outputPath, str(fileNum) + '.' + item['FileExtension'])
+            filePath = os.path.join(outputPath, f'{str(fileNum)}.' + item['FileExtension'])
             with open(filePath, "wb") as f:
                 for chunk in response.iter_content(chunk_size=1024 * 256):
                     f.write(chunk)
@@ -309,7 +305,7 @@ class Kobo:
             "PlatformId": Kobo.DefaultPlatformId,
         }
 
-        if len(userKey) > 0:
+        if userKey != "":
             postData["UserKey"] = userKey
 
         response = self.Session.post("https://storeapi.kobo.com/v1/auth/device", json=postData)
@@ -319,8 +315,7 @@ class Kobo:
 
         if jsonResponse["TokenType"] != "Bearer":
             raise KoboException(
-                "Device authentication returned with an unsupported token type: '%s'"
-                % jsonResponse["TokenType"]
+                f"""Device authentication returned with an unsupported token type: '{jsonResponse["TokenType"]}'"""
             )
 
         self.user.AccessToken = jsonResponse["AccessToken"]
@@ -328,7 +323,7 @@ class Kobo:
         if not self.user.AreAuthenticationSettingsSet():
             raise KoboException("Authentication settings are not set after device authentication.")
 
-        if len(userKey) > 0:
+        if userKey != "":
             self.user.UserKey = jsonResponse["UserKey"]
 
         Globals.Settings.Save()
@@ -338,7 +333,7 @@ class Kobo:
     def Download(self, bookMetadata: dict, isAudiobook: bool, outputPath: str) -> None:
         downloadUrl, hasDrm = self.__GetDownloadInfo(bookMetadata, isAudiobook)
         revisionId = Kobo.GetProductId(bookMetadata)
-        temporaryOutputPath = outputPath + ".downloading"
+        temporaryOutputPath = f"{outputPath}.downloading"
 
         try:
             if isAudiobook:
@@ -352,16 +347,15 @@ class Kobo:
                         "WARNING: Unable to parse the Adobe Digital Editions DRM. Saving it as an encrypted 'ade' file.",
                         "Try https://github.com/apprenticeharper/DeDRM_tools",
                     )
-                    copyfile(temporaryOutputPath, outputPath + ".ade")
+                    copyfile(temporaryOutputPath, f"{outputPath}.ade")
                 else:
                     contentAccessBook = self.__GetContentAccessBook(revisionId, self.DisplayProfile)
                     contentKeys = Kobo.__GetContentKeys(contentAccessBook)
                     drmRemover = KoboDrmRemover(self.user.DeviceId, self.user.UserId)
                     drmRemover.RemoveDrm(temporaryOutputPath, outputPath, contentKeys)
                 os.remove(temporaryOutputPath)
-            else:
-                if not isAudiobook:
-                    os.rename(temporaryOutputPath, outputPath)
+            elif not isAudiobook:
+                os.rename(temporaryOutputPath, outputPath)
         except:
             if os.path.isfile(temporaryOutputPath):
                 os.remove(temporaryOutputPath)
@@ -426,8 +420,7 @@ class Kobo:
         except requests.HTTPError as err:
             response = self.Session.get(audiobook_url, headers=headers, hooks=hooks)
             response.raise_for_status()
-        jsonResponse = response.json()
-        return jsonResponse
+        return response.json()
 
     def LoadInitializationSettings(self) -> None:
         """
@@ -473,20 +466,18 @@ class Kobo:
         match = re.search(r"'(kobo://UserAuthenticated\?[^']+)';", htmlResponse)
         if match is None:
             soup = BeautifulSoup(htmlResponse, 'html.parser')
-            errors = soup.find(class_='validation-summary-errors') or soup.find(
-                class_='field-validation-error'
+            if errors := soup.find(
+                class_='validation-summary-errors'
+            ) or soup.find(class_='field-validation-error'):
+                raise KoboException(f'Login Failure! {errors.text}')
+            with open('loginpage_error.html', 'w') as loginpagefile:
+                loginpagefile.write(htmlResponse)
+            raise KoboException(
+                "Authenticated user URL can't be found. The page format might have changed!\n\n"
+                "The bad page has been written to file 'loginpage_error.html'.  \n"
+                "You should open an issue on GitHub and attach this file for help: https://github.com/subdavis/kobo-book-downloader/issues\n"
+                "Please be sure to remove any personally identifying information from the file."
             )
-            if errors:
-                raise KoboException('Login Failure! ' + errors.text)
-            else:
-                with open('loginpage_error.html', 'w') as loginpagefile:
-                    loginpagefile.write(htmlResponse)
-                raise KoboException(
-                    "Authenticated user URL can't be found. The page format might have changed!\n\n"
-                    "The bad page has been written to file 'loginpage_error.html'.  \n"
-                    "You should open an issue on GitHub and attach this file for help: https://github.com/subdavis/kobo-book-downloader/issues\n"
-                    "Please be sure to remove any personally identifying information from the file."
-                )
 
         url = match.group(1)
         parsed = urllib.parse.urlparse(url)
